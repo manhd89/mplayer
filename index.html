@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MPlayer</title>
+  <link rel="stylesheet" href="player.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; }
+    #player { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="player"></div>
+  <script src="player.js"></script>
+  <script>
+    function getQueryUrl() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const url = params.get('url');
+        return url && url.trim() ? decodeURIComponent(url) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    const src = getQueryUrl() || 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+    window.player = new MPlayer('#player', { src });
+  </script>
+</body>
+</html>
