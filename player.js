@@ -15,21 +15,24 @@ class MPlayer {
         this.video.style.height = '100%';
         this.video.controls = false;
 
+        this.video.volume = localStorage.getItem('playerVolume') ? parseFloat(localStorage.getItem('playerVolume')) : 1;
+        this.video.muted = localStorage.getItem('playerMuted') === 'true';
+
         this.container.classList.add('m-player');
         this.container.appendChild(this.video);
 
         this._buildUI();
-
         this._bindClickEvents();
         this._bindUIEvents();
         this._bindKeyboard();
         this._bindFullscreenEvents();
+        this._bindSwipeEvents();
 
         this.hls = null;
         this._hideControlsTimeout = null;
         this._inactiveDelay = 2500;
         this._seekStep = 10;
-        this._lastVolume = 1;
+        this._lastVolume = this.video.volume > 0 ? this.video.volume : 1;
         this._tapTimeout = null;
         this._tapCount = { left: 0, right: 0 };
         this._doubleTapMaxDelay = 300;
@@ -41,15 +44,17 @@ class MPlayer {
         this._swipeStartY = 0;
         this._swipeThreshold = 50;
         this._swipeSpeedChange = false;
+        this._isSwipeDown = false;
 
         if (this.options.src) this.load(this.options.src);
 
+        this.volumeRange.value = this.video.muted ? 0 : this.video.volume * 100;
+        this._updateVolumeBar();
+        this._updateVolumeIcon();
         this._showControls();
         this._scheduleHideControls();
         this._updateProgress();
         this._updatePlayUI();
-        this._updateVolumeIcon();
-        this._updateVolumeBar();
         this._updateFullscreenIcon();
 
         this._resizeObserver = new ResizeObserver(entries => {
@@ -93,10 +98,13 @@ class MPlayer {
     seek(seconds) { this.video.currentTime = Math.max(0, Math.min(this.video.duration || 0, seconds)); }
     setVolume(v) {
         this.video.volume = Math.max(0, Math.min(1, v));
-        this.volumeRange.value = this.video.volume;
+        this.video.muted = false;
+        this.volumeRange.value = this.video.volume * 100;
         if (this.video.volume > 0) {
             this._lastVolume = this.video.volume;
         }
+        localStorage.setItem('playerVolume', this.video.volume);
+        localStorage.setItem('playerMuted', this.video.muted);
         this._updateVolumeIcon();
         this._updateVolumeBar();
     }
@@ -108,9 +116,11 @@ class MPlayer {
         } else {
             this.video.volume = this._lastVolume > 0 ? this._lastVolume : 1;
         }
+        this.volumeRange.value = this.video.muted ? 0 : this.video.volume * 100;
+        localStorage.setItem('playerVolume', this.video.volume);
+        localStorage.setItem('playerMuted', this.video.muted);
         this._updateVolumeIcon();
         this._updateVolumeBar();
-        this.volumeRange.value = this.video.volume;
     }
     async load(src) {
         if (this.hls) { try { this.hls.destroy(); } catch (e) {} this.hls = null; }
@@ -184,7 +194,7 @@ class MPlayer {
                         </div>
                     </div>
                     <button class="btn btn-volume" aria-label="Toggle mute"><i class="fas fa-volume-high"></i></button>
-                    <input class="volume-range" type="range" min="0" max="1" step="0.01" value="1" />
+                    <input class="volume-range" type="range" min="0" max="100" step="0.01" />
                     <button class="btn btn-full" aria-label="Fullscreen"><i class="fas fa-expand"></i></button>
                 </div>
             </div>
@@ -201,6 +211,8 @@ class MPlayer {
         this.volumeBtn = controls.querySelector('.btn-volume');
         this.volumeRange = controls.querySelector('.volume-range');
         this.fullBtn = controls.querySelector('.btn-full');
+
+        this.volumeRange.value = this.video.muted ? 0 : this.video.volume * 100;
     }
 
     _togglePlayPause() {
@@ -245,7 +257,7 @@ class MPlayer {
             }
 
             if (!target.closest('.speed-menu') && this.speedMenu.classList.contains('show')) {
-                 this._hideSpeedMenu();
+                this._hideSpeedMenu();
             }
         });
     }
@@ -278,6 +290,7 @@ class MPlayer {
         });
         this.video.addEventListener('pause', () => this._updatePlayUI());
         this.video.addEventListener('volumechange', () => {
+            this.volumeRange.value = this.video.muted ? 0 : this.video.volume * 100;
             this._updateVolumeIcon();
             this._updateVolumeBar();
         });
@@ -288,7 +301,7 @@ class MPlayer {
         this.video.addEventListener('playing', () => this._hideLoadingSpinner());
 
         this.volumeRange.addEventListener('input', (e) => {
-            this.setVolume(parseFloat(e.target.value));
+            this.setVolume(parseFloat(e.target.value) / 100);
         });
 
         ['mousemove', 'touchstart', 'touchmove'].forEach(ev => {
@@ -303,8 +316,6 @@ class MPlayer {
         } else {
             this.container.addEventListener('dblclick', (ev) => this._onDoubleClick(ev));
         }
-
-        this._bindSwipeEvents();
     }
 
     _bindSwipeEvents() {
@@ -313,6 +324,7 @@ class MPlayer {
                 this._swipeStartX = e.touches[0].clientX;
                 this._swipeStartY = e.touches[0].clientY;
                 this._swipeSpeedChange = false;
+                this._isSwipeDown = false;
             }
         }, { passive: true });
 
@@ -328,12 +340,15 @@ class MPlayer {
                 if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > this._swipeThreshold) {
                     e.preventDefault();
                     this._swipeSpeedChange = true;
-
                     if (dx < 0) {
                         this._setPlaybackSpeed(1);
                     } else {
                         this._setPlaybackSpeed(2);
                     }
+                } else if (Math.abs(dy) > Math.abs(dx) && dy > this._swipeThreshold) {
+                    e.preventDefault();
+                    this._isSwipeDown = true;
+                    this._hideControls();
                 }
             }
         }, { passive: false });
@@ -343,6 +358,7 @@ class MPlayer {
                 this._swipeStartX = e.clientX;
                 this._swipeStartY = e.clientY;
                 this._swipeSpeedChange = false;
+                this._isSwipeDown = false;
             }
         });
 
@@ -355,7 +371,6 @@ class MPlayer {
 
                 if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > this._swipeThreshold) {
                     this._swipeSpeedChange = true;
-
                     if (dx < 0) {
                         this._setPlaybackSpeed(1);
                     } else {
@@ -453,8 +468,15 @@ class MPlayer {
     }
 
     _updateVolumeBar() {
-        const pct = this.video.volume * 100;
-        this.volumeRange.style.background = `linear-gradient(to right, var(--accent-red) 0%, var(--accent-red) ${pct}%, rgba(255,255,255,0.2) ${pct}%, rgba(255,255,255,0.2) 100%)`;
+        const volumePct = this.video.muted ? 0 : this.video.volume * 100;
+        this.volumeRange.value = volumePct;
+        const gradient = `linear-gradient(to right,
+            var(--accent-red) 0%,
+            var(--accent-red) ${volumePct}%,
+            rgba(255, 255, 255, 0.2) ${volumePct}%,
+            rgba(255, 255, 255, 0.2) 100%
+        )`;
+        this.volumeRange.style.background = gradient;
     }
 
     _updateFullscreenIcon() {
@@ -568,6 +590,8 @@ class MPlayer {
                 if (e.code === 'Space') { e.preventDefault(); this.video.paused ? this.play() : this.pause(); }
                 if (e.code === 'ArrowRight') { this.seek(this.video.currentTime + this._seekStep); this._showSeekIndicator(this._seekStep, true); }
                 if (e.code === 'ArrowLeft') { this.seek(this.video.currentTime - this._seekStep); this._showSeekIndicator(this._seekStep, false); }
+                if (e.code === 'ArrowUp') { e.preventDefault(); this.setVolume(this.video.volume + 0.1); }
+                if (e.code === 'ArrowDown') { e.preventDefault(); this.setVolume(this.video.volume - 0.1); }
                 if (e.code === 'KeyF') {
                     if (!document.fullscreenElement) this.enterFullscreen();
                     else this.exitFullscreen();
@@ -590,6 +614,11 @@ class MPlayer {
         const width = rect.width;
         const isLeftRegion = x < width / 3;
         const isRightRegion = x > (2 * width) / 3;
+
+        if (this._isSwipeDown) {
+            this._isSwipeDown = false;
+            return;
+        }
 
         if (this._tapTimeout) {
             clearTimeout(this._tapTimeout);
