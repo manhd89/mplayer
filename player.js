@@ -20,7 +20,6 @@ class MPlayer {
 
         this._buildUI();
 
-        // Bind events directly without ClickManager
         this._bindClickEvents();
         this._bindUIEvents();
         this._bindKeyboard();
@@ -128,6 +127,7 @@ class MPlayer {
                     this.video.src = cleanUrl;
                 }
             } catch (e) {
+                console.error("Error loading HLS:", e);
             }
         } else {
             this.video.src = src;
@@ -150,6 +150,12 @@ class MPlayer {
         center.innerHTML = `<button class="center-play-btn" aria-label="Play/Pause"><i class="fas fa-play"></i></button>`;
         this.container.appendChild(center);
         this.centerPlayBtn = center.querySelector('.center-play-btn');
+
+        const loading = document.createElement('div');
+        loading.className = 'loading-spinner';
+        loading.innerHTML = `<div class="spinner-icon"><i class="fas fa-spinner fa-spin"></i></div>`;
+        this.container.appendChild(loading);
+        this.loadingSpinner = loading;
 
         const controls = document.createElement('div');
         controls.className = 'm-player-controls';
@@ -208,7 +214,7 @@ class MPlayer {
     _bindClickEvents() {
         this.container.addEventListener('click', (event) => {
             const target = event.target;
-            
+
             if (target.closest('.center-play-btn')) {
                 event.stopPropagation();
                 this._togglePlayPause();
@@ -260,6 +266,7 @@ class MPlayer {
         this.video.addEventListener('play', () => {
             this._updatePlayUI();
             this._scheduleHideControls();
+            this._hideLoadingSpinner();
         });
         this.video.addEventListener('timeupdate', () => {
             this._updateProgress();
@@ -267,12 +274,18 @@ class MPlayer {
         this.video.addEventListener('loadedmetadata', () => {
             this._setTimeText(this.video.currentTime || 0, this.video.duration || 0);
             this._updateProgress();
+            this._hideLoadingSpinner();
         });
         this.video.addEventListener('pause', () => this._updatePlayUI());
         this.video.addEventListener('volumechange', () => {
             this._updateVolumeIcon();
             this._updateVolumeBar();
         });
+
+        this.video.addEventListener('progress', () => this._updateProgress());
+        this.video.addEventListener('waiting', () => this._showLoadingSpinner());
+        this.video.addEventListener('canplay', () => this._hideLoadingSpinner());
+        this.video.addEventListener('playing', () => this._hideLoadingSpinner());
 
         this.volumeRange.addEventListener('input', (e) => {
             this.setVolume(parseFloat(e.target.value));
@@ -304,9 +317,8 @@ class MPlayer {
         }, { passive: true });
 
         this.container.addEventListener('touchmove', (e) => {
-            // Check if the event is from controls or a swipe is already in progress
             if (e.target.closest('.m-player-controls') || this._swipeSpeedChange) return;
-            
+
             if (e.touches.length === 1) {
                 const x = e.touches[0].clientX;
                 const y = e.touches[0].clientY;
@@ -335,9 +347,8 @@ class MPlayer {
         });
 
         this.container.addEventListener('mousemove', (e) => {
-            // Check if the event is from controls or a swipe is already in progress
             if (e.target.closest('.m-player-controls') || this._swipeSpeedChange) return;
-            
+
             if (e.buttons === 1) {
                 const dx = e.clientX - this._swipeStartX;
                 const dy = e.clientY - this._swipeStartY;
@@ -369,7 +380,7 @@ class MPlayer {
         this.currentSpeed = parsedSpeed;
         this.video.playbackRate = this.currentSpeed;
         this.speedBtn.textContent = `${this.currentSpeed}x`;
-        
+
         if (this._isSpeedBtnHidden) {
             this.speedDisplay.textContent = `${this.currentSpeed}x`;
             this._showSpeedDisplay();
@@ -456,15 +467,40 @@ class MPlayer {
     }
 
     _updateProgressBar(pct) {
-        this.progress.style.background = `linear-gradient(to right, var(--accent-red) 0%, var(--accent-red) ${pct}%, rgba(255,255,255,0.2) ${pct}%, rgba(255,255,255,0.2) 100%)`;
     }
 
     _updateProgress() {
         if (!this.video.duration || isNaN(this.video.duration)) return;
-        const pct = (this.video.currentTime / this.video.duration) * 100;
-        this.progress.value = pct;
-        this._updateProgressBar(pct);
+
+        const playedPct = (this.video.currentTime / this.video.duration) * 100;
+        
+        let bufferedPct = 0;
+        if (this.video.buffered.length > 0) {
+            const bufferedEnd = this.video.buffered.end(this.video.buffered.length - 1);
+            bufferedPct = (bufferedEnd / this.video.duration) * 100;
+        }
+
+        this.progress.value = playedPct;
+
+        const gradient = `linear-gradient(to right,
+            var(--accent-red) 0%,
+            var(--accent-red) ${playedPct}%,
+            rgba(255, 255, 255, 0.4) ${playedPct}%,
+            rgba(255, 255, 255, 0.4) ${bufferedPct}%,
+            rgba(255, 255, 255, 0.2) ${bufferedPct}%,
+            rgba(255, 255, 255, 0.2) 100%
+        )`;
+        
+        this.progress.style.background = gradient;
         this._setTimeText(this.video.currentTime, this.video.duration);
+    }
+
+    _showLoadingSpinner() {
+        this.loadingSpinner.style.display = 'flex';
+    }
+
+    _hideLoadingSpinner() {
+        this.loadingSpinner.style.display = 'none';
     }
 
     _setTimeText(current, total) {
@@ -646,7 +682,7 @@ class MPlayer {
             setTimeout(() => container.remove(), 300);
         }, 700);
     }
-    
+
     destroy() {
         if (this.hls) try { this.hls.destroy(); } catch (e) {}
         if (this._resizeObserver) this._resizeObserver.disconnect();
