@@ -1,3 +1,3 @@
-# MPlayer
+#MPlayer
 
-Play M3U8
+M3U8 player based on Shaka core

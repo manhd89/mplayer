@@ -63,6 +63,32 @@ async function initPlayer() {
   const params = new URLSearchParams(window.location.search);
   const url = params.get("url") || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
   await player.load(url);
+
+  let touchStartX = 0;
+  let touchEndX = 0;
+  const container = document.getElementById("video-container");
+
+  container.addEventListener("touchstart", (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+    console.log("TouchStart:", touchStartX);
+  });
+
+  container.addEventListener("touchend", (e) => {
+    touchEndX = e.changedTouches[0].screenX;
+    console.log("TouchEnd:", touchEndX);
+    handleGesture();
+  });
+
+  function handleGesture() {
+    const diffX = touchEndX - touchStartX;
+    if (Math.abs(diffX) < 50) return;
+
+    if (diffX > 50) {
+      video.playbackRate = 2.0;
+    } else if (diffX < -50) {
+      video.playbackRate = 1.0;
+    }
+  }
 }
 
 document.addEventListener("DOMContentLoaded", initPlayer);
