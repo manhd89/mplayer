@@ -1,6 +1,8 @@
+document.addEventListener("DOMContentLoaded", initPlayer);
+
 const AD_PATTERNS = [
   /#EXT-X-DISCONTINUITY\n(?:#EXT-X-KEY:METHOD=NONE\n(?:.*\n){18,24})?#EXT-X-DISCONTINUITY\n|convertv7\//g,
-  /#EXT-X-DISCONTINUITY\n#EXTINF:3\.920000,\n.*\n#EXTINF:0\.760000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:2\.500000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:2\.420000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:0\.780000,\n.*\n#EXTINF:1\.960000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:1\.760000,\n.*\n#EXTINF:3\.200000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:1\.360000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:0\.720000,\n.*/g
+  /#EXT-X-DISCONTINUITY\n#EXTINF:3\.920000,\n.*\n#EXTINF:0\.760000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:2\.500000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:2\.420000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:0\.780000,\n.*\n#EXTINF:1\.960000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:1\.760000,\n.*\n#EXTINF:3\.200000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:1\.360000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:2\.000000,\n.*\n#EXTINF:0\.720000,\n.*/g,
 ];
 
 function dropDiscontinuityBlocks(text, min = 18, max = 24) {
@@ -41,9 +43,11 @@ async function initPlayer() {
   }
 
   const video = document.querySelector("video");
-  const player = new shaka.Player(video);
+  const player = new shaka.Player();
+  player.attach(video);
 
-  new shaka.ui.Overlay(player, document.getElementById("video-container"), video);
+  const container = document.getElementById("video-container");
+  new shaka.ui.Overlay(player, container, video);
 
   player.getNetworkingEngine().registerResponseFilter((type, response) => {
     if (type !== shaka.net.NetworkingEngine.RequestType.MANIFEST) return;
@@ -64,31 +68,14 @@ async function initPlayer() {
   const url = params.get("url") || "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
   await player.load(url);
 
-  let touchStartX = 0;
-  let touchEndX = 0;
-  const container = document.getElementById("video-container");
-
-  container.addEventListener("touchstart", (e) => {
-    touchStartX = e.changedTouches[0].screenX;
-    console.log("TouchStart:", touchStartX);
+  const hammer = new Hammer(container);
+  hammer.get('swipe').set({ direction: Hammer.DIRECTION_HORIZONTAL });
+  
+  hammer.on('swiperight', () => {
+    video.playbackRate = 2.0;
   });
 
-  container.addEventListener("touchend", (e) => {
-    touchEndX = e.changedTouches[0].screenX;
-    console.log("TouchEnd:", touchEndX);
-    handleGesture();
+  hammer.on('swipeleft', () => {
+    video.playbackRate = 1.0;
   });
-
-  function handleGesture() {
-    const diffX = touchEndX - touchStartX;
-    if (Math.abs(diffX) < 50) return;
-
-    if (diffX > 50) {
-      video.playbackRate = 2.0;
-    } else if (diffX < -50) {
-      video.playbackRate = 1.0;
-    }
-  }
 }
-
-document.addEventListener("DOMContentLoaded", initPlayer);
